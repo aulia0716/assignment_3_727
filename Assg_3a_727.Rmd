@@ -5,8 +5,343 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-this is test upload
+You may work in pairs or individually for this assignment. Make sure you join a group in Canvas if you are working in pairs. Turn in this assignment as an HTML or PDF file to ELMS. Make sure to include the R Markdown or Quarto file that was used to generate it. Include the GitHub link for the repository containing these files.
+
+### GitHub link: https://github.com/aulia0716/assignment_3_727.git
+
+### Library
+
+```{r, message=FALSE, warning=FALSE}
+library(xml2)
+library(rvest)
+library(tidyverse)
+library(xml2)
+library(rvest)
+library(jsonlite)
+library(robotstxt)
+library(RSocrata)
+library(curl)
+```
+
+### Web Scraping
+
+In this assignment, your task is to scrape some information from Wikipedia. We start with the following page about Grand Boulevard, a Chicago Community Area.
+
+https://en.wikipedia.org/wiki/Grand_Boulevard,_Chicago
+
+The ultimate goal is to gather the table "Historical population" and convert it to a data.frame.
+
+As a first step, read in the html page as an R object. Extract the tables from this object (using the rvest package) and save the result as a new object. Follow the instructions if there is an error. Use str() on this new object, it should be a list. Try to find the position of the "Historical population" in this list since we need it in the next step.
+
+Extract the "Historical population" table from the list and save it as another object. You can use subsetting via [[…]] to extract pieces from a list. Print the result.
+
+You will see that the table needs some additional formatting. We only want rows and columns with actual values (I called the table object pop).
+
+```{r}
+# read the path
+paths_allowed("https://en.wikipedia.org/wiki/Grand_Boulevard,_Chicago")
+```
+
+```{r}
+# read the html
+site <- read_html("https://en.wikipedia.org/wiki/Grand_Boulevard,_Chicago")
+site
+```
+
+```{r}
+# check data structure
+str(site)
+```
+
+```{r}
+# extract the historical population
+nds <- html_elements(site, xpath = '//*[contains(concat( " ", @class, " " ), concat( " ", "us-census-pop-left", " " ))]//td | //*[contains(concat( " ", @class, " " ), concat( " ", "us-census-pop-left", " " ))]//th')
+
+# check the structure
+#str(nds)
+```
+
+```{r}
+# extract the text in the table
+names <- html_text(nds)
+names
+```
+
+```{r}
+# extract the list 
+year2 <- lapply(c(seq(from = 5, to = 41, by = 4)), function(pos) names[[pos]])
+population2 <- lapply(c(seq(from = 6, to = 42, by = 4)), function(pos) names[[pos]])
+percent_change2 <- lapply(c(seq(from = 8, to = 44, by = 4)), function(pos) names[[pos]])
+
+# Create a data frame for the current city
+city_name <- rep("Grand_Boulevard,_Chicago", length(year2))  
+pop2 <- data.frame(Year = unlist(year2),
+                  Population = unlist(population2),
+                  PercentChange = unlist(percent_change2))
+pop2
+```
+
+### Expanding to More Pages
+
+That's it for this page. However, we may want to repeat this process for other community areas. The Wikipedia page https://en.wikipedia.org/wiki/Grand_Boulevard,_Chicago has a section on "Places adjacent to Grand Boulevard, Chicago" at the bottom. Can you find the corresponding table in the list of tables that you created earlier? Extract this table as a new object.
+
+```{r}
+# extract the historical population
+adj_city <- html_elements(site, xpath = '//*[contains(concat( " ", @class, " " ), concat( " ", "navbox-odd", " " ))]//a')
+
+# check the structure
+#str(adj_city)
+```
+
+```{r}
+# grab the community areas east of Grand Boulevard
+city_list <- html_text(adj_city)
+city_list
+```
+
+Then, grab the community areas east of Grand Boulevard and save them as a character vector. Print the result.
+
+```{r}
+# extract the cities east of Grand Boulevard
+adj_cities <- city_list[c(3,5,7)]
+adj_cities
+```
+
+We want to use this list to create a loop that extracts the population tables from the Wikipedia pages of these places. To make this work and build valid urls, we need to replace empty spaces in the character vector with underscores. This can be done with gsub(), or by hand. The resulting vector should look like this: "Oakland,_Chicago" "Kenwood,_Chicago" "Hyde_Park,_Chicago". 
+
+To prepare the loop, we also want to copy our pop table and rename it as pops. In the loop, we append this table by adding columns from the other community areas.
+
+Build a small loop to test whether you can build valid urls using the vector of places and pasting each element of it after https://en.wikipedia.org/wiki/ in a for loop. Calling url shows the last url of this loop, which should be https://en.wikipedia.org/wiki/Hyde_Park,_Chicago.
+
+```{r}
+# for(i in places_east) {
+#   url <- ...
+#   }
+# url
+```
+
+Finally, extend the loop and add the code that is needed to grab the population tables from each page. Add columns to the original table pops using cbind().
+
+```{r}
+# subset the cities east of Grand Boulevard
+adj_cities <- gsub(" ", "_", adj_cities)
+adj_cities
+str(adj_cities)
+```
+
+```{r}
+# build the loop 
+# create an empty data frame
+pops <- data.frame()
+
+for(i in adj_cities) {
+  
+  # access the link
+  url <- paste0("https://en.wikipedia.org/wiki/",i, sep = "") 
+  site <- read_html(url)
+  print(url)
+  
+  # access the html
+  nds <- html_elements(site, xpath = '//*[contains(concat( " ", @class, " " ), concat( " ", "us-census-pop-right", " " ))]//td | //*[contains(concat( " ", @class, " " ), concat( " ", "us-census-pop-right", " " ))]//th')
+  #str(nds)
+
+  # access the text in the html
+  names <- html_text(nds)
+
+  # extract the list 
+  year2 <- lapply(c(seq(from = 5, to = 41, by = 4)), function(pos) names[[pos]])
+  population2 <- lapply(c(seq(from = 6, to = 42, by = 4)), function(pos) names[[pos]])
+  percent_change2 <- lapply(c(seq(from = 8, to = 44, by = 4)), function(pos) names[[pos]])
+
+  # Create a data frame for the current city
+  pop2 <- data.frame(Year = unlist(year2),
+                     Population = unlist(population2),
+                     PercentChange = unlist(percent_change2))
+
+  # Append the data frame to the 'pops' data frame
+  pops <- rbind(pops, pop2)
+}
+
+# print the result
+pops
+```
+
+### Scraping and Analyzing Text Data
+
+Suppose we wanted to take the actual text from the Wikipedia pages instead of just the information in the table. Our goal in this section is to extract the text from the body of the pages, then do some basic text cleaning and analysis.
+
+First, scrape just the text without any of the information in the margins or headers. For example, for "Grand Boulevard", the text should start with, "Grand Boulevard on the South Side of Chicago, Illinois, is one of the …". Make sure all of the text is in one block by using something like the code below (I called my object description).
+
+Using a similar loop as in the last section, grab the descriptions of the various communities areas. Make a tibble with two columns: the name of the location and the text describing the location.
+
+```{r}
+# extract the community areas
+comm <- html_elements(site, xpath = '//*[contains(concat( " ", @class, " " ), concat( " ", "navbox", " " )) and (((count(preceding-sibling::*) + 1) = 102) and parent::*)]//*[contains(concat( " ", @class, " " ), concat( " ", "navbox-list", " " ))]//a' )
+
+# check the structure
+#str(comm)
+
+# list of commpunity
+comm_list <- html_text(comm)
+comm_list
+
+# replace empty space with underscore 
+comm_areas <- paste(gsub(" ", "_", comm_list), ",_Chicago", sep="")
+comm_areas
+```
+
+```{r}
+# Build the loop
+# Initialize an empty tibble to store the information
+city_data <- tibble(City = character(0), Description = character(0))
+
+for (i in comm_areas) {
+  
+  # grab the information from the url
+  url <- paste0("https://en.wikipedia.org/wiki/", i, sep = "") 
+  site <- read_html(url)
+  nds <- html_elements(site, xpath = '//p')
+  names <- html_text(nds) %>% paste(collapse = ' ')
+  
+  # Create a tibble for the current city and append it to city_data
+  city_info <- tibble(City = i, Description = names)
+  city_data <- bind_rows(city_data, city_info)
+}
+
+# Print the final tibble
+print(city_data)
+```
+
+Let's clean the data using tidytext. If you have trouble with this section, see the example shown in https://www.tidytextmining.com/tidytext.html
+
+```{r}
+library(tidytext)
+```
+
+Create tokens using unnest_tokens. Make sure the data is in one-token-per-row format. Remove any stop words within the data. What are the most common words used overall?
+
+Plot the most common words within each location. What are some of the similarities between the locations? What are some of the differences?
+
+```{r}
+# create token using `unnest_token`
+tidy_city <- city_data %>%
+  unnest_tokens(Description, Description, token = "words")
+head(tidy_city)
+```
+
+```{r, message=FALSE}
+# Load stop words
+data(stop_words)
+
+# change the column names
+names(tidy_city)[names(tidy_city) == "Description"] <- "word"
+
+# Assuming you have a tibble called tidy_books in the one-word-per-row format
+tidy_city2 <- tidy_city %>%
+            anti_join(stop_words)
+```
+
+```{r}
+# compute overall common words within each location
+library(dplyr)
+tidy_city3 <- tidy_city2 %>%
+  count(word, sort = TRUE)
+```
+ 
+```{r}
+library(tidyverse)
+
+tidy_city3 %>%
+  filter(n > 500) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(n, word)) +
+  geom_col() +
+  labs(y = NULL)
+```
+
+The most common words in all community areas in Grand Boulevard Chicago are : `chicago`, `park`, `community`, `south`,  `neighborhood`,  `avenue`, `street`,  `west`, and `north. `
+
+### Similarities and Difference among community areas
+
+```{r}
+library(tidyr)
+
+# build the table
+frequency <- tidy_city2 %>%
+  mutate(word = str_extract(word, "[a-z']+")) %>%
+  count(City, word) %>%
+  group_by(City) %>%
+  mutate(proportion = n / sum(n)) %>% 
+  select(-n) %>% 
+  pivot_wider(names_from = City, values_from = proportion) %>%
+  pivot_longer(`Archer_Heights,_Chicago`:`Woodlawn,_Chicago`, names_to = "City", values_to = "proportion")
+
+# print the result
+frequency
+```
+
+### Take a sample of four community areas to analysis similarities and difference: Archer Heights, Armour Square, Ashburn, Auburn Gresham
+
+```{r}
+cities_of_interest <- c("Archer_Heights,_Chicago", "Armour_Square,_Chicago", "Ashburn,_Chicago", "Auburn_Gresham,_Chicago")
+freq_subset <- subset(frequency, City %in% cities_of_interest)
+```
+
+
+### Create plot 
+
+```{r, message=FALSE, warning=FALSE}
+library(scales)
+
+# expect a warning about rows with missing values being removed
+ggplot(freq_subset, aes(x = proportion, y = `Albany_Park,_Chicago`, 
+                      color = abs(`Albany_Park,_Chicago` - proportion))) +
+  geom_abline(color = "gray40", lty = 2) +
+  geom_jitter(alpha = 0.1, size = 2.5, width = 0.3, height = 0.3) +
+  geom_text(aes(label = word), check_overlap = TRUE, vjust = 1.5) +
+  scale_x_log10(labels = percent_format()) +
+  scale_y_log10(labels = percent_format()) +
+  scale_color_gradient(limits = c(0, 0.001), 
+                       low = "darkslategray4", high = "gray75") +
+  facet_wrap(~City, ncol = 2) +
+  theme(legend.position="none") +
+  labs(y = "Albany_Park,_Chicago", x = NULL)
+```
+
+
+The word close to the plot line shows the similar frequency between the two cities. Based on the graph, `chicago` is the shared word, which has a high frequency among the five community areas. The word `population` is the shared word for Albany Park, Archer Height, and Auburn Gresham. The word `city` is common among Albany Park, Armour Square, and Ashburn. The word `americans` is common in Albany Park, Armour Square, and Ashburn. The word `north` is the shared word with high frequency between Albany Park and Armour Square. The word `park` shows a high frequency in Albany Park but a low frequency in Archer Height. The word `african` has a high frequency in Ashburn. The word `barack` shows a relatively high frequency in Auburn Gresham. 
+
+### Compute correlation test
+
+
+```{r}
+# Initialize a list to store the correlation test results
+correlation_results <- list()
+
+# For loop to compute correlation tests
+for (city in cities_of_interest) {
+  # Subset the data for the current city
+  city_data <- frequency[frequency$City == city, ]
+  
+  # Perform the correlation test
+  cor_test_result <- cor.test(data = city_data, ~ proportion + `Albany_Park,_Chicago`)
+  
+  # Store the result in the list
+  correlation_results[[city]] <- cor_test_result
+}
+
+# Access the results for each city using the city name as the list key
+for (city in cities_of_interest) {
+  cat("Correlation Test for", city, ":\n")
+  print(correlation_results[[city]])
+  cat("\n")
+}
+```
+
+The correlation value of word frequency between Albany Park and the four community areas, Archer Heights, Armour Square, Ashburn, and Auburn Gresham, shows a relatively high correlation value with a score higher than 0.9. All of the correlation shows a statistically significant result. It means that the words with high frequency in Albany Park tend to have a high frequency in the other four community areas. 
+
